@@ -60,8 +60,8 @@ def pre_table(arr):
 # pre process the image
 def preprocess_img(image):
     image = cv2.imread(image)
-    image = cv2.cvtColor(image, 1, cv2.COLOR_BAYER_BG2GRAY)
-    ret, image = cv2.threshold(image, 100, 255, cv2.THRESH_TOZERO)
+   # image = cv2.cvtColor(image, 1, cv2.COLOR_BAYER_BG2GRAY)
+   # ret, image = cv2.threshold(image, 100, 255, cv2.THRESH_TOZERO)
     return image
 
 
@@ -153,13 +153,12 @@ def extract_todict(text):
             except:
                 form[process.extract(key.lower(),json_tag_text,limit=1)[0][0]]=None
     return form
-
+'''
 def slice_text(current_tag, next_tag, tokens):
     name_list = []
     end = []
     for idx, token in enumerate(tokens):
-        if token.lower().startswith(tuple(next_tag)) or token.lower().endswith(tuple(next_tag)) and idx < (
-                len(tokens) - 1):
+        if token.lower().startswith(tuple(next_tag)) or token.lower().endswith(tuple(next_tag)) and idx < (len(tokens) - 1):
             end.append(idx)
     for idx, token in enumerate(tokens):
         if token.lower().startswith(tuple(current_tag)) or token.lower().endswith(tuple(current_tag)) and idx < (
@@ -167,7 +166,20 @@ def slice_text(current_tag, next_tag, tokens):
             name = tokens[idx:end[0]]
             name_list.extend(name)
     return name_list
+'''
 
+def slice_text(current_tag, next_tag, tokens):
+    name_list = []
+    end = []
+    for idx, token in enumerate(tokens):
+        if token.startswith(tuple(next_tag)) or token.endswith(tuple(next_tag)) and idx < (len(tokens) - 1):
+            end.append(idx)
+    for idx, token in enumerate(tokens):
+        if token.startswith(tuple(current_tag)) or token.endswith(tuple(current_tag)) and idx < (
+                len(tokens) - 1):
+            name = tokens[idx:end[0]]
+            name_list.extend(name)
+    return name_list
 
 def clean(name_list):
     if name_list[1] == ":":
@@ -187,3 +199,5 @@ def clean(name_list):
             fn.append(i)
     final = ",".join(fn)
     return final
+
+

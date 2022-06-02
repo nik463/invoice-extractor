@@ -7,6 +7,7 @@ import re
 import pandas as pd
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow logging (1)
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # import tesserocr
 from PIL import Image
 import pytesseract
@@ -17,7 +18,7 @@ from thefuzz import process
 
 # from object_detection.utils import visualization_utils as viz_utils
 if os.name == 'nt':
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 CUSTOM_MODEL_NAME = 'my_ssd_mobnet'
 PRETRAINED_MODEL_NAME = 'ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8'
 PRETRAINED_MODEL_URL = 'http://download.tensorflow.org/models/object_detection/tf2/20200711/ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8.tar.gz'
@@ -40,6 +41,7 @@ paths = {
 
 files = {
     'PIPELINE_CONFIG': os.path.join('Tensorflow', 'workspace', 'models', CUSTOM_MODEL_NAME, 'pipeline.config'),
+    'PIPELINE_CONFIG_1': os.path.join('Tensorflow', 'workspace', 'models', CUSTOM_MODEL_NAME, 'pipeline1.config'),
     'TF_RECORD_SCRIPT': os.path.join(paths['SCRIPTS_PATH'], TF_RECORD_SCRIPT_NAME),
     'LABELMAP': os.path.join(paths['ANNOTATION_PATH'], LABEL_MAP_NAME)
 }
@@ -96,7 +98,6 @@ def detection_block(image, detection_threshold):
             image = cv2.cvtColor(crop[i], cv2.COLOR_BGR2GRAY)
             image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 15)
             image = cv2.resize(image, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_AREA)
-
             text = pytesseract.image_to_string(image, config='--psm 4').strip()
             text = text.split("\n")
             # text = re.sub("[^a-zA-Z0-9:,.]\s", "", text)
@@ -111,8 +112,7 @@ def detection_block(image, detection_threshold):
 
 
 # Load pipeline config and build a detection model
-configs1 = config_util.get_configs_from_pipeline_file(
-    "/home/smsplcok33/Projects/pythonservice/Tensorflow/workspace/models/my_ssd_mobnet/pipeline1.config")
+configs1 = config_util.get_configs_from_pipeline_file(files['PIPELINE_CONFIG_1'])
 detection_model_column = model_builder.build(model_config=configs1['model'], is_training=False)
 
 # Restore checkpoint
@@ -144,32 +144,47 @@ def detection_column(image, detection_threshold):
     scores = list(filter(lambda x: x > detection_threshold, detections['detection_scores']))
     boxes = detections['detection_boxes'][:len(scores)]
     classes = detections['detection_classes'][:len(scores)]
-    # crop_tb=[]
-    json_tag_table = ["sl_no", "description", "qty", "hsn_sac_code", "rate_uom", "total", "discount", "taxable_value",
-                      "amount"]
+    json_tag_table = ["sl_no", "description", "qty", "hsn_sac_code","uom","rate", "rate/uom", "total", "discount", "taxable_value",
+                      "amount","istin"]
     dict = {}
+    table_details = []
     for idx, box in enumerate(boxes):
         roi = box * [height, width, height, width]
         region = image[int(roi[0]):int(roi[2]), int(roi[1]):int(roi[3])]
-        #print(region.shape)
-        # region = cv2.resize(region, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_CUBIC)
         #region = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-        #region = cv2.adaptiveThreshold(region, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 15)
-        #region = cv2.resize(region, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        #image = cv2.adaptiveThreshold(region, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 15)
+        #region = cv2.resize(region, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_AREA)
         out = pytesseract.image_to_string(region, config='--psm 4 oem').strip()
+        #out = tostring(region)
         # ee= Image.fromarray(region)
         # out = tesserocr.image_to_text(ee).strip()
         # out = re.sub("[\\n]", " ",out)
         #
-        out = re.sub("[^a-zA-Z0-9:]\s", "", out)
+        out = re.sub("[|]", "", out)
         out = out.split("\n")
+        table_details.append(out)
         for i in range(len(out)):
-            dict.update({process.extract(out[0], json_tag_table, limit=1)[0][0]: out[1:]})
-        # crop_tb.append(out)
+            #dict.update({process.extract(re.sub("[^a-zA-Z0-9]:", "",out[0]), json_tag_table, limit=1)[0][0]: out[1:]})
+            dict.update({process.extract(re.sub("[^a-zA-Z0-9]:", "",out[0]), json_tag_table, limit=1)[0][0]:[i.strip() for i in out[1:] if len(i.strip())!=0]})
+    return dict,table_details
 
-    return dict
-
-
+def tostring(img):
+    #img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, thresh1 = cv2.threshold(img, 0, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
+    rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 18))
+    dilation = cv2.dilate(thresh1, rect_kernel, iterations = 1)
+    contours, hierarchy = cv2.findContours(dilation, cv2.RETR_EXTERNAL,
+                                                 cv2.CHAIN_APPROX_NONE)
+    im2 = img.copy()
+    #image = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+    image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 15)
+    image = cv2.resize(image, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_AREA) 
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        rect = cv2.rectangle(im2, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cropped = image[y:y + h, x:x + w]
+        text = pytesseract.image_to_string(cropped, config = '--psm 4')
+    return text
 '''
 def table_extraction(img):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -282,6 +297,5 @@ def table_extraction(img):
     # df_ls=[] for i in outer[2:-12]: df_ls.append(i[0].split()+i[1].split()) finl = pd.DataFrame(df_ls) finl.columns
     # = ["Total","RATE/UOM","QTY","HSNS AC CODE","Description","Amount","IGST Rate","Discount","Rate","Taxable/Value",]
     return arr
-
 
 '''

@@ -50,7 +50,7 @@ def home():
         #total['inv'] = invoice_details
         #total['table'] = table
         total = json_op(path)
-        return "file saved successfully"
+        return total
     return render_template("index.html",form=form)
 
 if __name__ == "__main__":
